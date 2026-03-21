@@ -4,7 +4,7 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const SECRET = 'camara-mock-secret';
+const SECRET = 'camara-secret';
 const FREE5GC = {
   nef: 'http://10.100.200.6:8000',
   udm: 'http://10.100.200.8:8000',
@@ -47,4 +47,4 @@ app.use('/location-retrieval',         authMiddleware, require('./routes/locatio
 // QoD
 app.use('/quality-on-demand', authMiddleware, require('./routes/qod'));
 
-app.listen(3000, () => console.log('[CAMARA Mock] Port 3000'));
+app.listen(3000, () => console.log('[CAMARA] Port 3000'));
