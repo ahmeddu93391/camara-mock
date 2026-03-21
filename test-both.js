@@ -10,35 +10,35 @@ async function main() {
   const headers = { Authorization: `Bearer ${r.data.access_token}`, 'Content-Type': 'application/json' };
 
   // ── WebUI ─────────────────────────────────────────────────
-  console.log('\n=== SIM Swap v0 (WebUI) ===');
-  const s0 = await axios.post(`${BASE}/webui/sim-swap/v0/check`,
+  console.log('\n=== SIM Swap (WebUI) ===');
+  const s0 = await axios.post(`${BASE}/webui/sim-swap//check`,
     { phoneNumber: PHONE, maxAge: 24 }, { headers });
   console.log(s0.data);
 
-  console.log('\n=== Device Status v0 (WebUI) ===');
-  const d0 = await axios.post(`${BASE}/webui/device-reachability-status/v0/retrieve`,
+  console.log('\n=== Device Status (WebUI) ===');
+  const d0 = await axios.post(`${BASE}/webui/device-reachability-status//retrieve`,
     { device: { phoneNumber: PHONE } }, { headers });
   console.log(d0.data);
 
-  console.log('\n=== Location v0 (WebUI) ===');
-  const l0 = await axios.post(`${BASE}/webui/location-verification/v0/verify`,
+  console.log('\n=== Location (WebUI) ===');
+  const l0 = await axios.post(`${BASE}/webui/location-verification//verify`,
     { device: { phoneNumber: PHONE }, area: { areaType: 'CIRCLE', center: { latitude: 48.8566, longitude: 2.3522 }, radius: 1000 } },
     { headers }
   ).catch(e => e.response);
   console.log(l0.data);
 
   // ── APIs internes ─────────────────────────────────────────
-  console.log('\n=== SIM Swap v1 (APIs internes) ===');
-  const s1 = await axios.post(`${BASE}/sim-swap/v1/check`,
+  console.log('\n=== SIM Swap (APIs internes) ===');
+  const s1 = await axios.post(`${BASE}/sim-swap//check`,
     { phoneNumber: PHONE, maxAge: 24 }, { headers });
   console.log(s1.data);
 
-  console.log('\n=== Device Status v1 (APIs internes) ===');
-  const d1 = await axios.post(`${BASE}/device-reachability-status/v1/retrieve`,
+  console.log('\n=== Device Status (APIs internes) ===');
+  const d1 = await axios.post(`${BASE}/device-reachability-status//retrieve`,
     { device: { phoneNumber: PHONE } }, { headers });
   console.log(d1.data);
 
-  console.log('\n=== Location v3 (APIs internes) ===');
+  console.log('\n=== Location (APIs internes) ===');
   const l1 = await axios.post(`${BASE}/location-verification/v3/verify`,
     { device: { phoneNumber: PHONE }, area: { areaType: 'CIRCLE', center: { latitude: 48.8566, longitude: 2.3522 }, radius: 1000 } },
     { headers }
@@ -47,14 +47,14 @@ async function main() {
 
   // ── QoD ───────────────────────────────────────────────────
   console.log('\n=== Quality on Demand ===');
-  const q = await axios.post(`${BASE}/quality-on-demand/v1/sessions`,
+  const q = await axios.post(`${BASE}/quality-on-demand//sessions`,
     { device: { phoneNumber: PHONE }, qosProfile: 'QOS_L', duration: 3600 },
     { headers }
   );
   console.log(q.data);
 
   // Supprimer la session
-  await axios.delete(`${BASE}/quality-on-demand/v1/sessions/${q.data.sessionId}`, { headers });
+  await axios.delete(`${BASE}/quality-on-demand//sessions/${q.data.sessionId}`, { headers });
   console.log('Session QoD supprimée OK');
 }
 
