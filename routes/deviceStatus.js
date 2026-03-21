@@ -1,57 +1,72 @@
 const router = require('express').Router();
 const axios  = require('axios');
 
-const WEBUI = 'http://host.docker.internal:5000';
+const NRF    = 'http://10.100.200.4:8000';
+const AMF    = 'http://10.100.200.16:8000';
+const UDR    = 'http://10.100.200.12:8000';
+const AF_ID  = '06738def-a5b1-4948-a1aa-93650d8ddf82';
+const NEF_ID = '9dea0e89-3b26-4b74-9159-5a01ffce1127';
 
-async function getWebuiToken() {
-  const login = await axios.post(`${WEBUI}/api/login`, {
-    username: 'admin',
-    password: 'free5gc'
-  });
-  return login.data.access_token;
+async function getNRFToken(nfType, targetNfType, scope, instanceId) {
+  const r = await axios.post(
+    `${NRF}/oauth2/token`,
+    new URLSearchParams({
+      grant_type: 'client_credentials',
+      nfInstanceId: instanceId,
+      nfType,
+      targetNfType,
+      scope,
+      requesterPlmn: '{"mcc":"208","mnc":"93"}'
+    }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
+  return r.data.access_token;
 }
 
-router.post('/v0/retrieve', async (req, res) => {
+function phoneToSupi(phone) {
+  const digits = phone.replace(/\D/g, '').slice(-9);
+  return `imsi-20893${digits.padStart(10, '0')}`;
+}
+
+router.post('/v1/retrieve', async (req, res) => {
   const phoneNumber = req.body.device?.phoneNumber;
 
   if (!phoneNumber)
     return res.status(400).json({ status: 400, code: 'INVALID_ARGUMENT', message: 'device.phoneNumber requis' });
 
   try {
-    const token = await getWebuiToken();
-    const gpsi = phoneToGpsi(phoneNumber);
+    const supi = phoneToSupi(phoneNumber);
 
-    // Récupérer tous les abonnés
-    const subs = await axios.get(`${WEBUI}/api/subscriber`, {
-      headers: { Token: token }
-    });
+    // Vérifier abonné dans UDR
+    const tokenUDR = await getNRFToken('NEF', 'UDR', 'nudr-dr', NEF_ID);
+    await axios.get(
+      `${UDR}/nudr-dr/v2/subscription-data/${supi}/20893/provisioned-data/am-data?supported-features=`,
+      { headers: { Authorization: `Bearer ${tokenUDR}` } }
+    );
 
-    const subscriber = subs.data.find(s => s.gpsi === gpsi);
+    // Vérifier connexion via AMF
+    const tokenAMF = await getNRFToken('AF', 'AMF', 'namf-oam', AF_ID);
+    const amfData  = await axios.get(
+      `${AMF}/namf-oam/v1/registered-ue-context`,
+      { headers: { Authorization: `Bearer ${tokenAMF}` } }
+    );
 
-    if (!subscriber) {
-      return res.json({
-        reachabilityStatus: 'UNREACHABLE',
-        reason: 'Abonné non trouvé',
-        checkedAt: new Date().toISOString()
-      });
-    }
+    const ueList    = amfData.data || [];
+    const connected = Array.isArray(ueList)
+      ? ueList.some(ue => ue.supi === supi || ue.ueId === supi)
+      : false;
 
-    // Abonné trouvé = enregistré dans le réseau
     res.json({
-      reachabilityStatus: 'REACHABLE',
-      ueId: subscriber.ueId,
+      reachabilityStatus: connected ? 'REACHABLE' : 'UNREACHABLE',
+      source: 'free5gc-amf',
+      supi,
       checkedAt: new Date().toISOString()
     });
 
   } catch(e) {
     console.error('[Device Status] Erreur :', e.response ? e.response.data : e.message);
-    res.json({ reachabilityStatus: 'UNREACHABLE', checkedAt: new Date().toISOString() });
+    res.json({ reachabilityStatus: 'UNREACHABLE', source: 'free5gc-amf', checkedAt: new Date().toISOString() });
   }
 });
-
-function phoneToGpsi(phone) {
-  const digits = phone.replace(/\D/g, '').slice(-10);
-  return `msisdn-${digits}`;
-}
 
 module.exports = router;
