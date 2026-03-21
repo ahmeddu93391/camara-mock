@@ -1,17 +1,32 @@
 const router = require('express').Router();
 const axios  = require('axios');
 
-const WEBUI = 'http://host.docker.internal:5000';
+const NRF    = 'http://10.100.200.4:8000';
+const UDR    = 'http://10.100.200.12:8000';
+const NEF_ID = '9dea0e89-3b26-4b74-9159-5a01ffce1127';
 
-async function getWebuiToken() {
-  const login = await axios.post(`${WEBUI}/api/login`, {
-    username: 'admin',
-    password: 'free5gc'
-  });
-  return login.data.access_token;
+async function getNRFToken() {
+  const r = await axios.post(
+    `${NRF}/oauth2/token`,
+    new URLSearchParams({
+      grant_type: 'client_credentials',
+      nfInstanceId: NEF_ID,
+      nfType: 'NEF',
+      targetNfType: 'UDR',
+      scope: 'nudr-dr',
+      requesterPlmn: '{"mcc":"208","mnc":"93"}'
+    }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
+  return r.data.access_token;
 }
 
-router.post('/v0/check', async (req, res) => {
+function phoneToSupi(phone) {
+  const digits = phone.replace(/\D/g, '').slice(-9);
+  return `imsi-20893${digits.padStart(10, '0')}`;
+}
+
+router.post('/v1/check', async (req, res) => {
   const { phoneNumber, maxAge = 24 } = req.body;
 
   if (!phoneNumber)
@@ -20,53 +35,25 @@ router.post('/v0/check', async (req, res) => {
     return res.status(400).json({ status: 400, code: 'OUT_OF_RANGE', message: 'maxAge max 240h' });
 
   try {
-    const token = await getWebuiToken();
+    const supi  = phoneToSupi(phoneNumber);
+    const token = await getNRFToken();
 
-    // Convertir le numéro en GPSI pour chercher l'abonné
-    const gpsi = phoneToGpsi(phoneNumber);
-
-    // Récupérer tous les abonnés
-    const subs = await axios.get(`${WEBUI}/api/subscriber`, {
-      headers: { Token: token }
-    });
-
-    // Chercher l'abonné correspondant
-    const subscriber = subs.data.find(s => s.gpsi === gpsi);
-
-    if (!subscriber) {
-      return res.status(404).json({
-        status: 404,
-        code: 'NOT_FOUND',
-        message: `Abonné ${phoneNumber} non trouvé`
-      });
-    }
-
-    // Récupérer les détails de l'abonné
-    const detail = await axios.get(
-      `${WEBUI}/api/subscriber/${subscriber.ueId}/${subscriber.plmnID}`,
-      { headers: { Token: token } }
+    const r = await axios.get(
+      `${UDR}/nudr-dr/v2/subscription-data/${supi}/authentication-data/authentication-subscription`,
+      { headers: { Authorization: `Bearer ${token}` } }
     );
 
-    // Vérifier si la SIM a changé dans la fenêtre maxAge
-    const updatedAt = detail.data.updatedAt || detail.data.createdAt;
+    const updatedAt = r.data?.updatedAt;
     const swapped = updatedAt
       ? (Date.now() - new Date(updatedAt).getTime()) < maxAge * 3600 * 1000
       : false;
 
-    res.json({
-      swapped,
-      checkedAt: new Date().toISOString()
-    });
+    res.json({ swapped, source: 'free5gc-udr', supi, checkedAt: new Date().toISOString() });
 
   } catch(e) {
-    console.error('[SIM Swap] Erreur :', e.response ? e.response.data : e.message);
-    res.json({ swapped: false, checkedAt: new Date().toISOString() });
+    console.error('[SIM Swap] Erreur UDR :', e.response ? e.response.data : e.message);
+    res.json({ swapped: false, source: 'free5gc-udr', checkedAt: new Date().toISOString() });
   }
 });
-
-function phoneToGpsi(phone) {
-  const digits = phone.replace(/\D/g, '').slice(-10);
-  return `msisdn-${digits}`;
-}
 
 module.exports = router;
