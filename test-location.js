@@ -8,19 +8,26 @@ async function main() {
   );
   const headers = { Authorization: `Bearer ${r.data.access_token}`, 'Content-Type': 'application/json' };
 
-  const res = await axios.post(`${BASE}/location-verification/v3/verify`,
-    {
-      device: { phoneNumber: '0900000000' },
-      area: {
-        areaType: 'CIRCLE',
-        center: { latitude: 48.8566, longitude: 2.3522 },
-        radius: 1000
-      }
-    },
-    { headers }
-  ).catch(e => e.response);
+  const body = {
+    device: { phoneNumber: '0900000000' },
+    area: {
+      areaType: 'CIRCLE',
+      center: { latitude: 48.8566, longitude: 2.3522 },
+      radius: 1000
+    }
+  };
 
-  console.log('Device Location :', res.data);
+  // WebUI
+  const res0 = await axios.post(`${BASE}/webui/location-verification/v0/verify`,
+    body, { headers }
+  ).catch(e => e.response);
+  console.log('Location WebUI :', res0.data);
+
+  // APIs internes
+  const res1 = await axios.post(`${BASE}/location-verification/v3/verify`,
+    body, { headers }
+  ).catch(e => e.response);
+  console.log('Location APIs internes :', res1.data);
 }
 
 main().catch(e => console.error('Erreur :', e.response ? e.response.data : e.message));
