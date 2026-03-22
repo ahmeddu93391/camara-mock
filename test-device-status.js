@@ -8,10 +8,17 @@ async function main() {
   );
   const headers = { Authorization: `Bearer ${r.data.access_token}`, 'Content-Type': 'application/json' };
 
-  const res = await axios.post(`${BASE}/device-reachability-status/v0/retrieve`,
+  // WebUI
+  const res0 = await axios.post(`${BASE}/webui/device-reachability-status/v0/retrieve`,
     { device: { phoneNumber: '0900000000' } }, { headers }
   );
-  console.log('Device Status :', res.data);
+  console.log('Device Status WebUI :', res0.data);
+
+  // APIs internes
+  const res1 = await axios.post(`${BASE}/device-reachability-status/v1/retrieve`,
+    { device: { phoneNumber: '0900000000' } }, { headers }
+  );
+  console.log('Device Status APIs internes :', res1.data);
 }
 
 main().catch(e => console.error('Erreur :', e.response ? e.response.data : e.message));
