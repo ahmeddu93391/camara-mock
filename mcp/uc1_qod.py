@@ -62,10 +62,62 @@ def obtenir_profile_qod(numero, token):
         )
         r.raise_for_status()
         profile = r.json()
-        fiveQI = profile.get("5qi", DEFAULT_5QI)
+        fiveQI = profile.get("5qi")
+        if fiveQI is None:  # Si CAMARA ne renvoie pas de 5QI, on passe par NRF → UDR
+            print(f"[Info] CAMARA ne renvoie pas de 5QI pour {numero}, récupération via NRF...")
+            # Token NRF pour UDR
+            token_nrf = requests.post(
+                NRF + "/oauth2/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "nfInstanceId": NEF_ID,
+                    "nfType": "NEF",
+                    "targetNfType": "UDR",
+                    "scope": "nudr-dr",
+                    "requesterPlmn": '{"mcc":"208","mnc":"93"}'
+                },
+                timeout=TIMEOUT_REQUEST
+            ).json().get("access_token")
+
+            token_udm = requests.post(
+                NRF + "/oauth2/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "nfInstanceId": NEF_ID,
+                    "nfType": "NEF",
+                    "targetNfType": "UDM",
+                    "scope": "nudm-sdm",
+                    "requesterPlmn": '{"mcc":"208","mnc":"93"}'
+                },
+                timeout=TIMEOUT_REQUEST
+            ).json().get("access_token")
+
+            r_supi = requests.get(
+                f"{UDM}/nudm-sdm/v2/msisdn-{numero}/id-translation-result",
+                headers={"Authorization": f"Bearer {token_udm}"},
+                timeout=TIMEOUT_REQUEST
+            )
+            r_supi.raise_for_status()
+            supi = r_supi.json().get("supi")
+
+            # Lecture du 5QI dans UDR
+            r_udr = requests.get(
+                f"{UDR}/nudr-dr/v2/subscription-data/{supi}/20893/provisioned-data/sm-data",
+                headers={"Authorization": f"Bearer {token_nrf}"},
+                timeout=TIMEOUT_REQUEST
+            )
+            r_udr.raise_for_status()
+            sm_data = r_udr.json()
+            # On récupère le premier dnnConfiguration → internet → 5gQosProfile → 5qi
+            fiveQI = sm_data.get("individualSmSubsData", [{}])[0]\
+                .get("dnnConfigurations", {}).get("internet", {})\
+                .get("5gQosProfile", {}).get("5qi", DEFAULT_5QI)
+            profile["5qi"] = fiveQI
+
         info = CORRESPONDANCE_5QI.get(fiveQI, {"profil": "QOS_M", "description": "Navigation web"})
         profile.update({"profil": info["profil"], "description": info["description"]})
         return profile
+
     except Exception as e:
         print(f"[Erreur] Impossible de récupérer le profil QoD pour {numero}: {e}")
         return {"5qi": DEFAULT_5QI, "profil": "QOS_M", "description": "Navigation web (défaut)"}
