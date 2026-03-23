@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
 import requests
 import json
 import re
 import time
 
-
 # CONFIGURATION
-CAMARA = "http://192.168.163.216:3000"  # IP de VM CAMARA
-OLLAMA = "http://localhost:11434/api/generate"  # API LLM local
+CAMARA = "http://192.168.163.216:3000"  # VM CAMARA
+OLLAMA = "http://localhost:11434/api/generate"  # LLM local
 CLIENT_ID = "test"
 CLIENT_SECRET = "test"
 DEFAULT_5QI = 9
@@ -27,7 +25,6 @@ CORRESPONDANCE_5QI = {
     8: {"profil": "QOS_S", "description": "Téléchargement"},
     9: {"profil": "QOS_M", "description": "Navigation web"},
 }
-
 
 def obtenir_token_camara():
     try:
@@ -99,12 +96,9 @@ def supprimer_session_qos(session_id, token):
         print(f"[Erreur] Impossible de supprimer session {session_id}: {e}")
         return None
 
-
-# AGENT IA
-
+# Agent IA 
 
 def analyser_avec_llm(numero, statut, profil_reseau):
-    """Envoie les données à l'agent IA LLM pour décision"""
     prompt = f"""Je suis un agent IA de gestion de réseau télécom 5G.
 
 === TERMINAL ===
@@ -124,9 +118,12 @@ Profil QoS  : {profil_reseau['profil']}
 
 Réponds UNIQUEMENT avec ce JSON exact, sans texte avant ou après :
 {{"decision": "ACTIVER","profilQos": "QOS_E","duree": 3600,"raison": "explication courte"}}"""
-
     try:
-        r = requests.post(OLLAMA, json={"model": "llama3.2", "prompt": prompt, "stream": False}, timeout=TIMEOUT_REQUEST)
+        r = requests.post(
+            OLLAMA,
+            json={"model": "llama3.2", "prompt": prompt, "stream": False},
+            timeout=TIMEOUT_REQUEST
+        )
         r.raise_for_status()
         return r.json().get("response", "")
     except Exception as e:
@@ -135,7 +132,8 @@ Réponds UNIQUEMENT avec ce JSON exact, sans texte avant ou après :
 
 def analyser_reponse_llm(reponse, profil_reseau, statut):
     if statut.get('reachabilityStatus') == 'UNREACHABLE':
-        return {"decision": "REJETER", "profilQos": profil_reseau['profil'], "duree": 3600, "raison": "Terminal non joignable - rejet automatique"}
+        return {"decision": "REJETER", "profilQos": profil_reseau['profil'], "duree": 3600,
+                "raison": "Terminal non joignable - rejet automatique"}
     try:
         match = re.search(r'\{.*?\}', reponse, re.DOTALL)
         if match:
@@ -144,8 +142,8 @@ def analyser_reponse_llm(reponse, profil_reseau, statut):
             return data
     except:
         pass
-    return {"decision": "ACTIVER", "profilQos": profil_reseau['profil'], "duree": 3600, "raison": f"Profil {profil_reseau['profil']} appliqué selon 5QI={profil_reseau['5qi']}"}
-
+    return {"decision": "ACTIVER", "profilQos": profil_reseau['profil'], "duree": 3600,
+            "raison": f"Profil {profil_reseau['profil']} appliqué selon 5QI={profil_reseau['5qi']}"}
 
 def executer_uc1(numero):
     print("=" * 60)
@@ -155,6 +153,10 @@ def executer_uc1(numero):
     debut = time.time()
 
     token = obtenir_token_camara()
+    if not token:
+        print("[Erreur] Aucun token CAMARA disponible, arrêt de l'UC1")
+        return
+
     statut = verifier_statut_terminal(numero, token)
     print(f"[1] Statut terminal : {statut.get('reachabilityStatus')} ({statut.get('source')}) CM={statut.get('cmState')}")
 
@@ -190,6 +192,7 @@ def executer_uc1(numero):
         "latenceMs": latence,
         "sessionId": session.get("sessionId") if session else None
     }
+
 
 if __name__ == "__main__":
     terminaux = ["0900000001","0900000002","0900000003","0900000004","0900000005"]
