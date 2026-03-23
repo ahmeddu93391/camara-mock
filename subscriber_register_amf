@@ -1,50 +1,43 @@
-const { exec } = require('child_process');
+const { exec } = require("child_process");
 
-const abonnés = [
-  { supi: 'imsi-208930000000001', msisdn: '0900000001', description: 'Visioconférence médicale (QOS_E)' },
-  { supi: 'imsi-208930000000002', msisdn: '0900000002', description: 'Vidéo temps réel (QOS_E)' },
-  { supi: 'imsi-208930000000003', msisdn: '0900000003', description: 'Jeu en ligne (QOS_L)' },
-  { supi: 'imsi-208930000000004', msisdn: '0900000004', description: 'Navigation web (QOS_M)' },
-  { supi: 'imsi-208930000000005', msisdn: '0900000005', description: 'Téléchargement (QOS_S)' },
+const subscribers = [
+  { supi: "imsi-208930000000002", msisdn: "0900000002" },
+  { supi: "imsi-208930000000003", msisdn: "0900000003" },
+  { supi: "imsi-208930000000004", msisdn: "0900000004" },
+  { supi: "imsi-208930000000005", msisdn: "0900000005" }
 ];
 
+const AMF_IP = "10.100.200.16"; // Ton AMF
+const RAN_TYPE = "gNB";
 
-const AMF_IP = '10.100.200.16';
+async function creerAbonne(supi, msisdn) {
+  return new Promise((resolve) => {
+    console.log(`Lancement UE ${msisdn} (${supi}) ...`);
 
-function lancerUE(ue) {
-  return new Promise((resolve, reject) => {
-    const cmd = `docker run --rm --net=host free5gc/ueransim:latest \
-      --supi ${ue.supi} \
-      --msisdn ${ue.msisdn} \
+    const cmd = `docker run --rm --net=host free5gc/ueransim:latest /ueransim/nr-ue \
+      --supi ${supi} \
+      --msisdn ${msisdn} \
       --amf-ip ${AMF_IP} \
-      --ran-type gNB`;
-    
-    console.log(`Lancement UE ${ue.msisdn} (${ue.supi}) ...`);
-    
-    const process = exec(cmd, (error, stdout, stderr) => {
+      --ran-type ${RAN_TYPE}`;
+
+    const child = exec(cmd, (error, stdout, stderr) => {
       if (error) {
-        console.error(`Erreur UE ${ue.msisdn}:`, error.message);
-        reject(error);
+        console.error(`Erreur UE ${msisdn}: ${error.message}`);
       } else {
-        console.log(`UE ${ue.msisdn} lancé.`);
-        resolve(stdout);
+        console.log(`UE ${msisdn} lancé avec succès !`);
       }
+      resolve();
     });
 
-    process.stdout.on('data', data => console.log(data.toString()));
-    process.stderr.on('data', data => console.error(data.toString()));
+    // Pour voir la sortie en direct (optionnel)
+    child.stdout.pipe(process.stdout);
+    child.stderr.pipe(process.stderr);
   });
 }
 
-async function main() {
-  for (const ue of abonnés) {
-    try {
-      await lancerUE(ue);
-    } catch (e) {
-      console.error(e);
-    }
+(async () => {
+  for (const sub of subscribers) {
+    await creerAbonne(sub.supi, sub.msisdn);
   }
-  console.log('Tous les UEs sont lancés et devraient être attachés à l’AMF !');
-}
-
-main();
+  console.log("Tous les UEs sont lancés et devraient être attachés à l’AMF !");
+})();
