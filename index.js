@@ -46,4 +46,5 @@ app.use('/location-retrieval',         authMiddleware, require('./routes/locatio
 
 // QoD
 app.use('/quality-on-demand', authMiddleware, require('./routes/qod'));
+app.use('/v1/profiles', authMiddleware, require('./routes/profiles'));
 app.listen(3000, () => console.log('[CAMARA] Port 3000'));
