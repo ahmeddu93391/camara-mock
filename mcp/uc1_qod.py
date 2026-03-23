@@ -14,6 +14,11 @@ CLIENT_SECRET = "test"
 DEFAULT_5QI = 9
 TIMEOUT_REQUEST = 3  # secondes pour HTTP
 
+NRF = "http://10.100.200.4:8000"
+UDM = "http://10.100.200.8:8000"
+UDR = "http://10.100.200.12:8000"
+NEF_ID = "9dea0e89-3b26-4b74-9159-5a01ffce1127"
+
 CORRESPONDANCE_5QI = {
     1: {"profil": "QOS_E", "description": "Voix temps réel"},
     2: {"profil": "QOS_E", "description": "Vidéo temps réel"},
@@ -63,8 +68,10 @@ def obtenir_profile_qod(numero, token):
         r.raise_for_status()
         profile = r.json()
         fiveQI = profile.get("5qi")
-        if fiveQI is None:  # Si CAMARA ne renvoie pas de 5QI, on passe par NRF → UDR
-            print(f"[Info] CAMARA ne renvoie pas de 5QI pour {numero}, récupération via NRF...")
+
+        if fiveQI is None:
+            print(f"[Info] CAMARA ne renvoie pas de 5QI pour {numero}, récupération via NRF/UDR...")
+
             # Token NRF pour UDR
             token_nrf = requests.post(
                 NRF + "/oauth2/token",
@@ -79,6 +86,7 @@ def obtenir_profile_qod(numero, token):
                 timeout=TIMEOUT_REQUEST
             ).json().get("access_token")
 
+            # Token UDM
             token_udm = requests.post(
                 NRF + "/oauth2/token",
                 data={
@@ -92,6 +100,7 @@ def obtenir_profile_qod(numero, token):
                 timeout=TIMEOUT_REQUEST
             ).json().get("access_token")
 
+            # Traduction MSISDN → SUPI
             r_supi = requests.get(
                 f"{UDM}/nudm-sdm/v2/msisdn-{numero}/id-translation-result",
                 headers={"Authorization": f"Bearer {token_udm}"},
@@ -100,7 +109,7 @@ def obtenir_profile_qod(numero, token):
             r_supi.raise_for_status()
             supi = r_supi.json().get("supi")
 
-            # Lecture du 5QI dans UDR
+            # Lecture du 5QI depuis UDR
             r_udr = requests.get(
                 f"{UDR}/nudr-dr/v2/subscription-data/{supi}/20893/provisioned-data/sm-data",
                 headers={"Authorization": f"Bearer {token_nrf}"},
@@ -108,7 +117,7 @@ def obtenir_profile_qod(numero, token):
             )
             r_udr.raise_for_status()
             sm_data = r_udr.json()
-            # On récupère le premier dnnConfiguration → internet → 5gQosProfile → 5qi
+
             fiveQI = sm_data.get("individualSmSubsData", [{}])[0]\
                 .get("dnnConfigurations", {}).get("internet", {})\
                 .get("5gQosProfile", {}).get("5qi", DEFAULT_5QI)
@@ -148,7 +157,7 @@ def supprimer_session_qos(session_id, token):
         print(f"[Erreur] Impossible de supprimer session {session_id}: {e}")
         return None
 
-# Agent IA 
+# ------------------ Agent IA ------------------
 
 def analyser_avec_llm(numero, statut, profil_reseau):
     prompt = f"""Je suis un agent IA de gestion de réseau télécom 5G.
@@ -244,7 +253,6 @@ def executer_uc1(numero):
         "latenceMs": latence,
         "sessionId": session.get("sessionId") if session else None
     }
-
 
 if __name__ == "__main__":
     terminaux = ["0900000001","0900000002","0900000003","0900000004","0900000005"]
