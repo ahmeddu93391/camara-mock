@@ -6,9 +6,7 @@ import time
 CAMARA = "http://192.168.163.216:3000"
 OLLAMA = "http://localhost:11434/api/generate"
 
-# ── Helpers ───────────────────────────────────────────────────
-
-def get_token():
+def obtenir_token():
     r = requests.post(
         CAMARA + "/oauth/token",
         data="grant_type=client_credentials&client_id=test&client_secret=test",
@@ -16,13 +14,12 @@ def get_token():
     )
     return r.json()["access_token"]
 
-# ── APIs CAMARA ───────────────────────────────────────────────
 
-def get_device_status(phone):
-    token = get_token()
+def verifier_statut_terminal(numero):
+    token = obtenir_token()
     r = requests.post(
         CAMARA + "/device-reachability-status/v1/retrieve",
-        json={"device": {"phoneNumber": phone}},
+        json={"device": {"phoneNumber": numero}},
         headers={
             "Authorization": "Bearer " + token,
             "Content-Type": "application/json"
@@ -30,14 +27,14 @@ def get_device_status(phone):
     )
     return r.json()
 
-def create_qod_session(phone, profile="QOS_L", duration=3600):
-    token = get_token()
+def creer_session_qos(numero, profil="QOS_L", duree=3600):
+    token = obtenir_token()
     r = requests.post(
         CAMARA + "/quality-on-demand/v1/sessions",
         json={
-            "device": {"phoneNumber": phone},
-            "qosProfile": profile,
-            "duration": duration
+            "device": {"phoneNumber": numero},
+            "qosProfile": profil,
+            "duration": duree
         },
         headers={
             "Authorization": "Bearer " + token,
@@ -46,46 +43,45 @@ def create_qod_session(phone, profile="QOS_L", duration=3600):
     )
     return r.json()
 
-def delete_qod_session(session_id):
-    token = get_token()
+def supprimer_session_qos(session_id):
+    token = obtenir_token()
     r = requests.delete(
         CAMARA + "/quality-on-demand/v1/sessions/" + session_id,
         headers={"Authorization": "Bearer " + token}
     )
     return r.status_code
 
-def get_qod_session(session_id):
-    token = get_token()
+def consulter_session_qos(session_id):
+    token = obtenir_token()
     r = requests.get(
         CAMARA + "/quality-on-demand/v1/sessions/" + session_id,
         headers={"Authorization": "Bearer " + token}
     )
     return r.json()
 
-# ── Agent LLM ─────────────────────────────────────────────────
 
-def analyze_with_llm(phone, device_status):
-    prompt = """You are a telecom AI agent managing network quality.
+def analyser_avec_llm(numero, statut_terminal):
+    prompt = """je suis un agent IA de gestion de réseau télécom.
 
-A critical application needs priority network access for phone: """ + phone + """
+Une application critique a besoin d'un accès réseau prioritaire pour le numéro : """ + numero + """
 
-Device Status: """ + json.dumps(device_status, indent=2) + """
+Statut du terminal : """ + json.dumps(statut_terminal, indent=2) + """
 
-Rules:
-- If reachabilityStatus = REACHABLE -> activate QoS
-- If reachabilityStatus = UNREACHABLE -> do not activate, device is offline
-- Choose QoS profile based on need:
-  * QOS_E = real-time video/voice (highest priority)
-  * QOS_L = high priority data
-  * QOS_M = medium priority
-  * QOS_S = low priority
+Règles :
+- Si reachabilityStatus = REACHABLE -> activer la QoS
+- Si reachabilityStatus = UNREACHABLE -> ne pas activer, le terminal est hors ligne
+- Choisir le profil QoS selon le besoin :
+  * QOS_E = vidéo/voix temps réel (priorité maximale)
+  * QOS_L = données haute priorité
+  * QOS_M = priorité moyenne
+  * QOS_S = basse priorité
 
-Return ONLY JSON:
+Réponds UNIQUEMENT en JSON :
 {
-  "decision": "ACTIVATE or REJECT",
-  "qosProfile": "QOS_E or QOS_L or QOS_M or QOS_S",
-  "duration": 3600,
-  "reason": "short explanation"
+  "decision": "ACTIVER ou REJETER",
+  "profilQos": "QOS_E ou QOS_L ou QOS_M ou QOS_S",
+  "duree": 3600,
+  "raison": "explication courte en français"
 }"""
 
     r = requests.post(
@@ -98,88 +94,90 @@ Return ONLY JSON:
     )
     return r.json()["response"]
 
-def parse_llm_response(response):
+def analyser_reponse_llm(reponse):
     try:
-        match = re.search(r'\{.*\}', response, re.DOTALL)
+        match = re.search(r'\{.*\}', reponse, re.DOTALL)
         if match:
             return json.loads(match.group())
     except:
         pass
     return {
-        "decision": "REJECT",
-        "qosProfile": "QOS_L",
-        "duration": 3600,
-        "reason": "Parse error — default REJECT"
+        "decision": "REJETER",
+        "profilQos": "QOS_L",
+        "duree": 3600,
+        "raison": "Erreur d'analyse - rejet par défaut"
     }
 
-# ── UC1 Principal ─────────────────────────────────────────────
-
-def run_uc1(phone):
+def executer_uc1(numero):
     print("=" * 55)
-    print("UC1 — Smart Connectivity Boost")
-    print(f"Terminal : {phone}")
+    print("UC1 - Boost de Connectivité Intelligent")
+    print(f"Terminal : {numero}")
     print("=" * 55)
 
-    start = time.time()
+    debut = time.time()
 
-    # Étape 1 — Vérifier l'état du terminal
-    print("\n[1] Checking device status...")
-    device = get_device_status(phone)
-    print(f"    Status : {device.get('reachabilityStatus')} ({device.get('source')})")
+    # Vérifier l'état du terminal
+    print("\n[1] Vérification du statut terminal...")
+    statut = verifier_statut_terminal(numero)
+    print(f"    Statut     : {statut.get('reachabilityStatus')} ({statut.get('source')})")
+    if statut.get('supi'):
+        print(f"    SUPI       : {statut.get('supi')}")
+    if statut.get('cmState'):
+        print(f"    État CM    : {statut.get('cmState')}")
 
-    # Étape 2 — Décision LLM
-    print("\n[2] Agent analyzing context...")
-    raw = analyze_with_llm(phone, device)
-    decision = parse_llm_response(raw)
-    print(f"    Decision  : {decision.get('decision')}")
-    print(f"    QoS Profile : {decision.get('qosProfile')}")
-    print(f"    Reason    : {decision.get('reason')}")
+    # Décision de l'agent LLM
+    print("\n[2] Analyse par l'agent IA...")
+    reponse_brute = analyser_avec_llm(numero, statut)
+    decision = analyser_reponse_llm(reponse_brute)
+    print(f"    Décision   : {decision.get('decision')}")
+    print(f"    Profil QoS : {decision.get('profilQos')}")
+    print(f"    Raison     : {decision.get('raison')}")
 
     session = None
 
-    # Étape 3 — Activer la QoS si décision ACTIVATE
-    if decision.get('decision') == 'ACTIVATE':
-        print("\n[3] Activating QoS session...")
-        session = create_qod_session(
-            phone,
-            profile=decision.get('qosProfile', 'QOS_L'),
-            duration=decision.get('duration', 3600)
+    # Activer la QoS si décision ACTIVER
+    if decision.get('decision') == 'ACTIVER':
+        print("\n[3] Activation de la session QoS...")
+        session = creer_session_qos(
+            numero,
+            profil=decision.get('profilQos', 'QOS_L'),
+            duree=decision.get('duree', 3600)
         )
         print(f"    Session ID : {session.get('sessionId')}")
-        print(f"    Status     : {session.get('status')}")
-        print(f"    Expires    : {session.get('expiresAt')}")
+        print(f"    Statut     : {session.get('status')}")
+        print(f"    Expiration : {session.get('expiresAt')}")
     else:
-        print("\n[3] QoS activation REJECTED — device not reachable")
+        print("\n[3] Activation QoS REJETÉE - terminal non joignable")
 
     # Mesure latence
-    latency = int((time.time() - start) * 1000)
+    latence = int((time.time() - debut) * 1000)
 
     print("\n" + "=" * 55)
-    print("RESULT:")
+    print("RÉSULTAT FINAL :")
     print("=" * 55)
-    print(f"Decision : {decision.get('decision')}")
-    print(f"Latency  : {latency}ms (target < 500ms)")
-    if latency < 500:
-        print("Performance : ✓ OK")
+    print(f"Décision   : {decision.get('decision')}")
+    print(f"Latence    : {latence}ms (objectif < 500ms)")
+    if latence < 500:
+        print("Performance : OK")
     else:
-        print("Performance : ✗ Too slow")
+        print("Performance : Trop lent - problème de latence LLM")
 
-    # Étape 4 — Simulation fin d'usage → suppression session
+    # Simulation fin d'usage → suppression session
     if session and session.get('sessionId'):
-        print("\n[4] Simulating end of usage — deleting session...")
-        status = delete_qod_session(session['sessionId'])
-        print(f"    Session deleted : HTTP {status}")
+        print("\n[4] Fin d'usage simulée - suppression session QoS...")
+        code = supprimer_session_qos(session['sessionId'])
+        print(f"    Session supprimée : HTTP {code}")
 
     return {
-        "phone": phone,
-        "deviceStatus": device.get('reachabilityStatus'),
+        "numero": numero,
+        "statutTerminal": statut.get('reachabilityStatus'),
         "decision": decision.get('decision'),
-        "qosProfile": decision.get('qosProfile'),
-        "latencyMs": latency,
+        "profilQos": decision.get('profilQos'),
+        "latenceMs": latence,
         "sessionId": session.get('sessionId') if session else None
     }
 
 if __name__ == "__main__":
-    result = run_uc1("0900000000")
-    print("\nFinal result:")
-    print(json.dumps(result, indent=2))
+    resultat = executer_uc1("0900000000")
+    print("\nRésultat final :")
+    print(json.dumps(resultat, indent=2, ensure_ascii=False))
