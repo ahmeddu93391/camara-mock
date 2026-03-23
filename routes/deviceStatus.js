@@ -53,7 +53,10 @@ router.post('/v1/retrieve', async (req, res) => {
 
     const ueList    = amfData.data || [];
     const connected = Array.isArray(ueList)
-      ? ueList.some(ue => ue.supi === supi || ue.ueId === supi)
+      ? ueList.some(ue => 
+        (ue.Supi === supi || ue.supi === supi) && 
+        ue.CmState === 'CONNECTED'
+        )
       : false;
 
     res.json({
