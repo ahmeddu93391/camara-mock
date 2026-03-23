@@ -64,3 +64,4 @@ router.get('/v1/profiles/:phoneNumber', async (req, res) => {
     res.json({ phoneNumber, '5qi': 9 });
   }
 });
+module.exports = router;
