@@ -3,21 +3,14 @@
 
 import requests
 import json
-import re
 import time
 
 # CONFIGURATION
-CAMARA = "http://192.168.163.216:3000"  # VM CAMARA
+CAMARA = "http://192.168.163.216:3000"  # VM CAMARA Node.js
 OLLAMA = "http://localhost:11434/api/generate"  # LLM local
 CLIENT_ID = "test"
 CLIENT_SECRET = "test"
-DEFAULT_5QI = 9
 TIMEOUT_REQUEST = 3  # secondes pour HTTP
-
-NRF = "http://10.100.200.4:8000"
-UDM = "http://10.100.200.8:8000"
-UDR = "http://10.100.200.12:8000"
-NEF_ID = "9dea0e89-3b26-4b74-9159-5a01ffce1127"
 
 CORRESPONDANCE_5QI = {
     1: {"profil": "QOS_E", "description": "Voix temps réel"},
@@ -39,7 +32,7 @@ def obtenir_token_camara():
             timeout=TIMEOUT_REQUEST
         )
         resp.raise_for_status()
-        return resp.json()["access_token"]
+        return resp.json().get("access_token")
     except Exception as e:
         print("[Erreur] Impossible d'obtenir un token CAMARA:", e)
         return None
@@ -61,80 +54,24 @@ def verifier_statut_terminal(numero, token):
 def obtenir_profile_qod(numero, token):
     try:
         r = requests.get(
-            CAMARA + f"/quality-on-demand/v1/profiles/{numero}",
+            CAMARA + f"/v1/profiles/{numero}",
             headers={"Authorization": f"Bearer {token}"},
             timeout=TIMEOUT_REQUEST
         )
         r.raise_for_status()
         profile = r.json()
-        fiveQI = profile.get("5qi")
-
-        if fiveQI is None:
-            print(f"[Info] CAMARA ne renvoie pas de 5QI pour {numero}, récupération via NRF/UDR...")
-
-            # Token NRF pour UDR
-            token_nrf = requests.post(
-                NRF + "/oauth2/token",
-                data={
-                    "grant_type": "client_credentials",
-                    "nfInstanceId": NEF_ID,
-                    "nfType": "NEF",
-                    "targetNfType": "UDR",
-                    "scope": "nudr-dr",
-                    "requesterPlmn": '{"mcc":"208","mnc":"93"}'
-                },
-                timeout=TIMEOUT_REQUEST
-            ).json().get("access_token")
-
-            # Token UDM
-            token_udm = requests.post(
-                NRF + "/oauth2/token",
-                data={
-                    "grant_type": "client_credentials",
-                    "nfInstanceId": NEF_ID,
-                    "nfType": "NEF",
-                    "targetNfType": "UDM",
-                    "scope": "nudm-sdm",
-                    "requesterPlmn": '{"mcc":"208","mnc":"93"}'
-                },
-                timeout=TIMEOUT_REQUEST
-            ).json().get("access_token")
-
-            # Traduction MSISDN → SUPI
-            r_supi = requests.get(
-                f"{UDM}/nudm-sdm/v2/msisdn-{numero}/id-translation-result",
-                headers={"Authorization": f"Bearer {token_udm}"},
-                timeout=TIMEOUT_REQUEST
-            )
-            r_supi.raise_for_status()
-            supi = r_supi.json().get("supi")
-
-            # Lecture du 5QI depuis UDR
-            r_udr = requests.get(
-                f"{UDR}/nudr-dr/v2/subscription-data/{supi}/20893/provisioned-data/sm-data",
-                headers={"Authorization": f"Bearer {token_nrf}"},
-                timeout=TIMEOUT_REQUEST
-            )
-            r_udr.raise_for_status()
-            sm_data = r_udr.json()
-
-            fiveQI = sm_data.get("individualSmSubsData", [{}])[0]\
-                .get("dnnConfigurations", {}).get("internet", {})\
-                .get("5gQosProfile", {}).get("5qi", DEFAULT_5QI)
-            profile["5qi"] = fiveQI
-
+        fiveQI = profile.get("5qi", 9)
         info = CORRESPONDANCE_5QI.get(fiveQI, {"profil": "QOS_M", "description": "Navigation web"})
         profile.update({"profil": info["profil"], "description": info["description"]})
         return profile
-
     except Exception as e:
         print(f"[Erreur] Impossible de récupérer le profil QoD pour {numero}: {e}")
-        return {"5qi": DEFAULT_5QI, "profil": "QOS_M", "description": "Navigation web (défaut)"}
+        return {"5qi": 9, "profil": "QOS_M", "description": "Navigation web (défaut)"}
 
 def creer_session_qos(numero, profil, duree=3600, token=None):
     try:
         r = requests.post(
-            CAMARA + "/quality-on-demand/v1/sessions",
+            CAMARA + "/v1/sessions",
             json={"device": {"phoneNumber": numero}, "qosProfile": profil, "duration": duree},
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             timeout=TIMEOUT_REQUEST
@@ -148,7 +85,7 @@ def creer_session_qos(numero, profil, duree=3600, token=None):
 def supprimer_session_qos(session_id, token):
     try:
         r = requests.delete(
-            CAMARA + f"/quality-on-demand/v1/sessions/{session_id}",
+            CAMARA + f"/v1/sessions/{session_id}",
             headers={"Authorization": f"Bearer {token}"},
             timeout=TIMEOUT_REQUEST
         )
@@ -157,8 +94,7 @@ def supprimer_session_qos(session_id, token):
         print(f"[Erreur] Impossible de supprimer session {session_id}: {e}")
         return None
 
-# ------------------ Agent IA ------------------
-
+# Agent IA
 def analyser_avec_llm(numero, statut, profil_reseau):
     prompt = f"""Je suis un agent IA de gestion de réseau télécom 5G.
 
@@ -196,6 +132,7 @@ def analyser_reponse_llm(reponse, profil_reseau, statut):
         return {"decision": "REJETER", "profilQos": profil_reseau['profil'], "duree": 3600,
                 "raison": "Terminal non joignable - rejet automatique"}
     try:
+        import re, json
         match = re.search(r'\{.*?\}', reponse, re.DOTALL)
         if match:
             data = json.loads(match.group())
@@ -253,6 +190,7 @@ def executer_uc1(numero):
         "latenceMs": latence,
         "sessionId": session.get("sessionId") if session else None
     }
+
 
 if __name__ == "__main__":
     terminaux = ["0900000001","0900000002","0900000003","0900000004","0900000005"]
