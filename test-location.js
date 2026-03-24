@@ -17,13 +17,7 @@ async function main() {
     }
   };
 
-  // WebUI
-  const res0 = await axios.post(`${BASE}/webui/location-verification/v0/verify`,
-    body, { headers }
-  ).catch(e => e.response);
-  console.log('Location WebUI :', res0.data);
-
-  // APIs internes
+  // API
   const res1 = await axios.post(`${BASE}/location-verification/v3/verify`,
     body, { headers }
   ).catch(e => e.response);
