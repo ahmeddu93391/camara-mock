@@ -17,7 +17,6 @@ async function main() {
     }
   };
 
-  // API
   const res1 = await axios.post(`${BASE}/location-verification/v3/verify`,
     body, { headers }
   ).catch(e => e.response);
